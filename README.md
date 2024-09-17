@@ -1,2 +1,2 @@
-# Energy-aware predictive scheduling algorithm for battery-less 6TiSCH routers
-This repository will contain the open-source code of a predictive scheduling algorithm for 6TiSCH networks, presented in the paper "Energy-Aware Predictive Scheduling for Battery-Less 6TiSCH Routers in Industrial Wireless Sensor Networks". As the paper is currently under review, the open-source code will be made available after publication.
+# Energy-aware adaptive scheduling algorithm for battery-less 6TiSCH routers
+This repository will contain the open-source code of a predictive scheduling algorithm for 6TiSCH networks, presented in the paper "Energy-Aware Adaptive Scheduling for Battery-Less 6TiSCH Routers in Industrial Wireless Sensor Networks". As the paper is currently under review, the open-source code will be made available after publication.
