@@ -1,0 +1,132 @@
+COOJA_PATH ?= $(CONTIKI_NG_TOOLS_DIR)/cooja
+
+ifdef nodeid
+CFLAGS += -DNODEID=$(nodeid)
+endif
+
+CFLAGS += -gstabs+
+
+.SUFFIXES:
+
+### Define the CPU directory
+CONTIKI_CPU = $(CONTIKI_NG_RELOC_CPU_DIR)/msp430
+
+### Define the source files we have in the MSP430 port
+
+ifndef CONTIKI_CPU_FAM_DIR
+ ifneq (,$(findstring msp430f1,$(MCU)))
+  CONTIKI_CPU_FAM_DIR = f1xxx
+ endif
+endif
+ifndef CONTIKI_CPU_FAM_DIR
+ ifneq (,$(findstring msp430f5,$(MCU)))
+  CONTIKI_CPU_FAM_DIR = f5xxx
+ endif
+endif
+ifndef CONTIKI_CPU_FAM_DIR
+ ifneq (,$(findstring msp430f2,$(MCU)))
+  CONTIKI_CPU_FAM_DIR = f2xxx f1xxx
+ endif
+endif
+ifndef CONTIKI_CPU_FAM_DIR
+ ${error Unhandled MSP430 family: "$(MCU)"}
+endif
+
+CONTIKI_CPU_DIRS = $(CONTIKI_CPU_FAM_DIR) . dev
+
+MSP430     = msp430.c flash.c clock.c leds.c leds-arch.c \
+             watchdog.c lpm.c rtimer-arch.c int-master.c
+UIPDRIVERS = slip.c crc16.c
+
+CONTIKI_TARGET_SOURCEFILES += $(MSP430) \
+                              $(SYSAPPS) \
+                              $(UIPDRIVERS)
+
+CONTIKI_SOURCEFILES        += $(CONTIKI_TARGET_SOURCEFILES)
+
+### Compiler definitions
+
+ifeq ($(WERROR),1)
+CFLAGSWERROR= -Wall -Werror
+endif
+
+CC       = msp430-gcc
+CXX      = msp430-g++
+LD       = msp430-gcc
+AS       = msp430-as
+AR       = msp430-ar
+NM       = msp430-nm
+OBJCOPY  = msp430-objcopy
+STRIP    = msp430-strip
+BSL      = msp430-bsl
+
+ifdef CPU_HAS_MSP430X
+ ifeq ($(TARGET_MEMORY_MODEL),large)
+  CFLAGS += -mmemory-model=$(TARGET_MEMORY_MODEL)
+  CFLAGS += -mcode-region=far -mdata-region=far -msr20 -mc20 -md20
+  LDFLAGS += -mmemory-model=$(TARGET_MEMORY_MODEL) -mcode-region=far -mdata-region=far -msr20 -mc20 -md20
+ else
+  TARGET_MEMORY_MODEL = medium
+  CFLAGS += -mmemory-model=$(TARGET_MEMORY_MODEL)
+  CFLAGS += -ffunction-sections -fdata-sections -mcode-region=any
+  LDFLAGS += -mmemory-model=$(TARGET_MEMORY_MODEL) -Wl,-gc-sections
+ endif
+endif
+
+ifndef CFLAGSNO
+CFLAGSNO = -Wall -mmcu=$(MCU) $(CFLAGSWERROR)
+endif
+CFLAGS  += -Os -fno-strict-aliasing -std=gnu99
+LDFLAGS += -mmcu=$(MCU) -Wl,-Map=$(CONTIKI_NG_PROJECT_MAP)
+
+### These flags can reduce the code size and RAM usage with up to 10%
+SMALL ?= 1
+ifeq ($(SMALL),1)
+CFLAGS += -ffunction-sections
+# CFLAGS += -fdata-sections
+LDFLAGS += -Wl,--gc-sections,--undefined=_reset_vector__,--undefined=InterruptVectors,--undefined=_copy_data_init__,--undefined=_clear_bss_init__,--undefined=_end_of_init__
+endif # SMALL
+
+# Define the `_stack` symbol used by the stack check library to be equal to `_end`
+LDFLAGS += -Wl,--defsym=_stack=_end
+
+CFLAGS  += $(CFLAGSNO)
+
+PROJECT_OBJECTFILES += ${addprefix $(OBJECTDIR)/,$(CONTIKI_TARGET_MAIN:.c=.o)}
+
+### CPU-dependent cleanup files
+CLEAN += *.firmware *.ihex
+
+### Compilation rules
+
+%-stripped.o: %.c
+	$(CC) $(CFLAGS) -c $< -o $@
+	$(STRIP) --strip-unneeded -g -x $@
+
+%-stripped.o: %.o
+	$(STRIP) --strip-unneeded -g -x -o $@ $<
+
+%.firmware:	%.${TARGET}
+	mv $< $@
+
+%.ihex: %.$(TARGET)
+	$(OBJCOPY) $^ -O ihex $@
+
+$(COOJA_PATH)/build.xml:
+	@echo '----------------'
+	@echo 'Could not find the COOJA build file. Did you run "git submodule update --init --recursive"?'
+	@echo '----------------'
+
+$(COOJA_PATH)/mspsim/build.xml: $(COOJA_PATH)/build.xml
+	@echo '----------------'
+	@echo 'Could not find the MSPSim build file. Did you run "git submodule update --init --recursive"?'
+	@echo '----------------'
+
+$(COOJA_PATH)/mspsim/mspsim.jar: $(COOJA_PATH)/mspsim/build.xml
+	cd $(COOJA_PATH)/mspsim && ant jar
+
+%.mspsim:	%.${TARGET} ${COOJA_PATH}/mspsim/mspsim.jar
+	$(JAVA) -jar ${COOJA_PATH}/mspsim/mspsim.jar -platform=${TARGET} $<
+
+%.mspsim-maptable: %.$(TARGET)
+	$(JAVA) -classpath ${COOJA_PATH}/mspsim/mspsim.jar se.sics.mspsim.util.MapTable $(CONTIKI_NG_PROJECT_MAP)
